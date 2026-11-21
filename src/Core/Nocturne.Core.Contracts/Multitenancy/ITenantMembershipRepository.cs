@@ -148,7 +148,7 @@ public interface ITenantMembershipRepository
     Task RecordUseAsync(Guid tenantId, Guid memberId, DateTime at, string? ipAddress, string? userAgent, CancellationToken ct);
 
     /// <summary>
-    /// The subject's platform-admin flag and their membership of <paramref name="tenantId"/>, read
+    /// Whether the subject is an active platform admin, and their membership of <paramref name="tenantId"/>, read
     /// in one statement for the authentication of every request; null when there is no such subject.
     /// </summary>
     Task<SubjectMembershipRead?> ReadSubjectMembershipAsync(Guid subjectId, Guid tenantId, CancellationToken ct);
@@ -253,5 +253,5 @@ public interface ITenantMembershipRepository
 /// <param name="LastUsedAt">When the membership was last stamped as used.</param>
 public sealed record TenantMembershipFacts(Guid Id, TenantMemberAccess Access, DateTime? LastUsedAt);
 
-/// <summary>A subject's platform-admin flag with their membership of the resolved tenant, or null when they hold none.</summary>
+/// <summary>Whether a subject is an active platform admin (<see cref="Nocturne.Core.Models.Authorization.SubjectSignInState.IsActivePlatformAdmin"/>), with their membership of the resolved tenant, or null when they hold none.</summary>
 public sealed record SubjectMembershipRead(bool IsPlatformAdmin, TenantMembershipFacts? Membership);

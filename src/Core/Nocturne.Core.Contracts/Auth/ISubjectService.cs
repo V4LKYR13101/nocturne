@@ -107,8 +107,9 @@ public interface ISubjectService
 
     /// <returns>
     /// <see cref="SubjectChange.Changed"/> when deleted, <see cref="SubjectChange.LastOwnerOf"/> naming
-    /// the tenants when the subject is the last owner of any, <see cref="SubjectChange.NotFound"/> when
-    /// it does not exist or is a system subject
+    /// the tenants when the subject is the last owner of any,
+    /// <see cref="SubjectChange.LastActivePlatformAdmin"/> when it is the instance's last active
+    /// platform admin, <see cref="SubjectChange.NotFound"/> when it does not exist or is a system subject
     /// </returns>
     Task<SubjectChange> DeleteSubjectAsync(Guid subjectId);
 
@@ -117,8 +118,9 @@ public interface ISubjectService
 
     /// <returns>
     /// <see cref="SubjectChange.Changed"/> when deactivated, <see cref="SubjectChange.LastOwnerOf"/>
-    /// naming the tenants when the subject is the last owner of any, <see cref="SubjectChange.NotFound"/>
-    /// when it does not exist
+    /// naming the tenants when the subject is the last owner of any,
+    /// <see cref="SubjectChange.LastActivePlatformAdmin"/> when it is the instance's last active
+    /// platform admin, <see cref="SubjectChange.NotFound"/> when it does not exist
     /// </returns>
     Task<SubjectChange> DeactivateSubjectAsync(Guid subjectId);
 

@@ -110,7 +110,11 @@ public interface ISubjectRepository
     /// Deactivating an active subject is refused with <see cref="SubjectChange.LastOwnerOf"/> while it
     /// is the last owner of any tenant by <c>TenantOwnerFilter.IsLastOwnerAsync</c>, since a deactivated owner no longer counts.
     /// The check holds the owner lock of each tenant the subject belongs to, in ascending tenant id,
-    /// until the change commits. Over a unit, deactivate inside the unit's commit.
+    /// until the change commits. Over a unit, deactivate or demote inside the unit's commit.
+    /// Deactivating or demoting the instance's last active platform admin
+    /// (<c>PlatformAdminFilter.ActivePlatformAdmins</c>) is refused with
+    /// <see cref="SubjectChange.LastActivePlatformAdmin"/>; the check holds the platform-admin lock
+    /// until the change commits.
     /// </remarks>
     Task<SubjectChange> UpdateAsync(Guid subjectId, SubjectEdit edit, CancellationToken ct);
 
@@ -151,7 +155,8 @@ public interface ISubjectRepository
     /// of any tenant by <c>TenantOwnerFilter.IsLastOwnerAsync</c>, whether or not the tenant has other members: the cascade would remove
     /// its membership. An inactive subject is never refused, since it counts as no owner. The check
     /// holds the owner lock of each tenant the subject belongs to, in ascending tenant id, until the
-    /// delete commits.
+    /// delete commits. Deleting the instance's last active platform admin is refused with
+    /// <see cref="SubjectChange.LastActivePlatformAdmin"/>, as <see cref="UpdateAsync"/> refuses it.
     /// </remarks>
     Task<SubjectChange> DeleteAsync(Guid subjectId, CancellationToken ct);
 
@@ -163,20 +168,16 @@ public interface ISubjectRepository
     Task<bool?> IsDemoSubjectAsync(Guid subjectId, CancellationToken ct);
 
     /// <summary>
-    /// Whether the subject holds platform admin; false when there is no such subject. Read as the
-    /// scope's reader, unlike <see cref="GetSignInStateAsync"/>.
+    /// Whether the subject is an active platform admin (<see cref="SubjectSignInState.IsActivePlatformAdmin"/>);
+    /// false when there is no such subject. Read as the scope's reader, unlike <see cref="GetSignInStateAsync"/>.
     /// </summary>
     Task<bool> IsPlatformAdminAsync(Guid subjectId, CancellationToken ct);
 
     /// <summary>Whether any subject holds platform admin.</summary>
     /// <remarks>
-    /// On a platform context: the startup bootstrap that asks has no request scope. The scope's
-    /// reader counts with <see cref="CountPlatformAdminsAsync"/>.
+    /// On a platform context: the startup bootstrap that asks has no request scope.
     /// </remarks>
     Task<bool> AnyPlatformAdminAsync(CancellationToken ct);
-
-    /// <summary>How many subjects hold platform admin, read as the scope's reader.</summary>
-    Task<int> CountPlatformAdminsAsync(CancellationToken ct);
 
     /// <summary>Grants platform admin to those of <paramref name="subjectIds"/> that exist and returns how many.</summary>
     /// <remarks>On a platform context, as <see cref="AnyPlatformAdminAsync"/> is.</remarks>
@@ -189,7 +190,7 @@ public interface ISubjectRepository
     /// <remarks>
     /// Pinned to <paramref name="subjectId"/>: the hub revalidation proves a connection's
     /// credential as that connection's own subject, so the <c>subject_pin</c> policy admits that
-    /// row and no other. <see cref="IsPlatformAdminAsync"/> is the same flag as the scope's reader.
+    /// row and no other. <see cref="IsPlatformAdminAsync"/> is the same rule as the scope's reader.
     /// </remarks>
     Task<SubjectSignInState?> GetSignInStateAsync(Guid subjectId, CancellationToken ct);
 

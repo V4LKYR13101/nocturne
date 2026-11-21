@@ -111,12 +111,18 @@ public class AccessRequestController(
         if (subject is not { ApprovalStatus: nameof(ApprovalStatus.Pending) })
             return NotFound();
 
-        if (await subjectService.DeleteSubjectAsync(subjectId) is SubjectChange.LastOwnerOf lastOwnerOf)
+        switch (await subjectService.DeleteSubjectAsync(subjectId))
         {
-            return Problem(
-                detail: $"The subject is the only owner, or the last owner who can sign in, of: {string.Join(", ", lastOwnerOf.OwnedTenants.Select(t => t.Slug))}.",
-                statusCode: StatusCodes.Status409Conflict,
-                title: "Conflict");
+            case SubjectChange.LastOwnerOf lastOwnerOf:
+                return Problem(
+                    detail: $"The subject is the only owner, or the last owner who can sign in, of: {string.Join(", ", lastOwnerOf.OwnedTenants.Select(t => t.Slug))}.",
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Conflict");
+            case SubjectChange.LastActivePlatformAdmin:
+                return Problem(
+                    detail: "The subject is the last active platform admin.",
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Conflict");
         }
 
         var denyTenantContext = tenantAccessor.Context;

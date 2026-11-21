@@ -54,9 +54,11 @@ public class AuthenticationMiddlewarePlatformAdminTests
 
     /// <summary>
     /// Builds the middleware over a platform-admin subject who is a member of the resolved tenant,
-    /// authenticating with <paramref name="authType"/>.
+    /// authenticating with <paramref name="authType"/>. With <paramref name="tenantResolved"/> false
+    /// the request is on the apex, where no membership is read alongside the flag.
     /// </summary>
-    private static async Task<DefaultHttpContext> RunAsync(AuthType authType)
+    private static async Task<DefaultHttpContext> RunAsync(
+        AuthType authType, bool isActive = true, bool tenantResolved = true)
     {
         var dbName = $"auth_platform_admin_{Guid.NewGuid()}";
         var services = new ServiceCollection();
@@ -74,7 +76,7 @@ public class AuthenticationMiddlewarePlatformAdminTests
             {
                 Id = SubjectId,
                 Name = "Operator",
-                IsActive = true,
+                IsActive = isActive,
                 IsPlatformAdmin = true,
                 ApprovalStatus = "Approved",
             });
@@ -86,7 +88,8 @@ public class AuthenticationMiddlewarePlatformAdminTests
         }
 
         var context = new DefaultHttpContext { RequestServices = provider };
-        context.Items["TenantContext"] = new TenantContext(TenantId, "site", "Site", true, false);
+        if (tenantResolved)
+            context.Items["TenantContext"] = new TenantContext(TenantId, "site", "Site", true, false);
 
         var middleware = new AuthenticationMiddleware(
             next: _ => Task.CompletedTask,
@@ -98,7 +101,7 @@ public class AuthenticationMiddlewarePlatformAdminTests
                     IsAuthenticated = true,
                     AuthType = authType,
                     SubjectId = SubjectId,
-                    TenantId = TenantId,
+                    TenantId = tenantResolved ? TenantId : null,
                     SubjectName = "Operator",
                 }),
             ],
@@ -139,6 +142,22 @@ public class AuthenticationMiddlewarePlatformAdminTests
         context.User.Identity?.IsAuthenticated.Should().BeTrue(
             "the credential is still valid; only the platform-admin standing is withheld");
         context.User.Claims
+            .Should().NotContain(c => c.Type == ClaimTypes.Role && c.Value == "platform_admin");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_deactivated_subject_does_not_carry_it_while_its_credential_is_still_valid(bool tenantResolved)
+    {
+        var active = await RunAsync(AuthType.SessionCookie, isActive: true, tenantResolved: tenantResolved);
+        var deactivated = await RunAsync(AuthType.SessionCookie, isActive: false, tenantResolved: tenantResolved);
+
+        active.User.Claims
+            .Should().Contain(c => c.Type == ClaimTypes.Role && c.Value == "platform_admin");
+        deactivated.User.Identity?.IsAuthenticated.Should().BeTrue(
+            "the credential itself is accepted; platform administration is a right of an active subject");
+        deactivated.User.Claims
             .Should().NotContain(c => c.Type == ClaimTypes.Role && c.Value == "platform_admin");
     }
 }

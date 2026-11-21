@@ -259,7 +259,7 @@ public class SubjectRepository : ISubjectRepository
     /// <inheritdoc/>
     public virtual async Task<SubjectChange> UpdateAsync(Guid subjectId, SubjectEdit edit, CancellationToken ct)
     {
-        if (edit.IsActive is not false)
+        if (edit.IsActive is not false && edit.IsPlatformAdmin is not false)
         {
             await using var lease = await OpenAsync(ct);
             var change = await ApplyEditAsync(lease.Context, subjectId, edit, ct);
@@ -285,7 +285,8 @@ public class SubjectRepository : ISubjectRepository
 
     /// <summary>
     /// Stages <paramref name="edit"/> on the subject. Deactivating an active subject takes the owner
-    /// lock of each tenant it belongs to first (<see cref="TenantOwnerLock"/>), so it runs inside a
+    /// lock of each tenant it belongs to first (<see cref="TenantOwnerLock"/>), and deactivating or
+    /// demoting takes the platform-admin lock (<see cref="PlatformAdminFilter"/>), so it runs inside a
     /// transaction.
     /// </summary>
     private async Task<SubjectChange> ApplyEditAsync(
@@ -301,6 +302,10 @@ public class SubjectRepository : ISubjectRepository
             if (lastOwnerOf.Count > 0)
                 return new SubjectChange.LastOwnerOf(lastOwnerOf);
         }
+
+        if ((edit.IsActive is false || edit.IsPlatformAdmin is false)
+            && await db.IsLastActivePlatformAdminAsync(subjectId, ct))
+            return new SubjectChange.LastActivePlatformAdmin();
 
         if (edit.Name is not null)
             entity.Name = edit.Name;
@@ -453,6 +458,9 @@ public class SubjectRepository : ISubjectRepository
                     return new SubjectChange.LastOwnerOf(lastOwnerOf);
             }
 
+            if (await db.IsLastActivePlatformAdminAsync(subjectId, ct))
+                return new SubjectChange.LastActivePlatformAdmin();
+
             // One statement per column set: the audit trail of a long-lived subject is every
             // sign-in it ever made, which is not loaded into the tracker to null two columns.
             await db.AuthAuditLog
@@ -528,10 +536,11 @@ public class SubjectRepository : ISubjectRepository
     public virtual async Task<bool> IsPlatformAdminAsync(Guid subjectId, CancellationToken ct)
     {
         await using var lease = await OpenAsync(ct);
-        return await lease.Context.Subjects.AsNoTracking()
+        var state = await lease.Context.Subjects.AsNoTracking()
             .Where(s => s.Id == subjectId)
-            .Select(s => s.IsPlatformAdmin)
+            .Select(s => new SubjectSignInState(s.IsActive, s.IsPlatformAdmin))
             .FirstOrDefaultAsync(ct);
+        return state?.IsActivePlatformAdmin ?? false;
     }
 
     /// <inheritdoc/>
@@ -539,13 +548,6 @@ public class SubjectRepository : ISubjectRepository
     {
         await using var db = await Pinnable.CreatePlatformAsync(ct);
         return await db.Subjects.AnyAsync(s => s.IsPlatformAdmin, ct);
-    }
-
-    /// <inheritdoc/>
-    public virtual async Task<int> CountPlatformAdminsAsync(CancellationToken ct)
-    {
-        await using var lease = await OpenAsync(ct);
-        return await lease.Context.Subjects.CountAsync(s => s.IsPlatformAdmin, ct);
     }
 
     /// <inheritdoc/>

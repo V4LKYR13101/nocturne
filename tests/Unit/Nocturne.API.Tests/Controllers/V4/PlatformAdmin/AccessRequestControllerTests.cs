@@ -181,6 +181,19 @@ public sealed class AccessRequestControllerTests : IDisposable
         problem.Value.Should().BeOfType<ProblemDetails>().Which.Detail.Should().Contain("test").And.Contain("other");
     }
 
+    [Fact]
+    public async Task Deny_isRefusedWithAConflictWhenTheSubjectIsTheLastActivePlatformAdmin()
+    {
+        var requestorId = await SeedPendingRequestAsync();
+        _subjectService
+            .Setup(s => s.DeleteSubjectAsync(requestorId))
+            .ReturnsAsync(new SubjectChange.LastActivePlatformAdmin());
+
+        var result = await _controller.Deny(requestorId, CancellationToken.None);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status409Conflict);
+    }
+
     private void ArchivedFor(Guid subjectId, NotificationArchiveReason reason, Times times) =>
         _notifications.Verify(
             s => s.ArchiveBySourceAsync(

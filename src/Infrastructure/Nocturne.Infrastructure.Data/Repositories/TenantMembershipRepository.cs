@@ -495,7 +495,7 @@ public class TenantMembershipRepository : ITenantMembershipRepository
                 joined => joined.members.DefaultIfEmpty(),
                 (joined, m) => new MembershipRow
                 {
-                    IsPlatformAdmin = joined.s.IsPlatformAdmin,
+                    Subject = new SubjectSignInState(joined.s.IsActive, joined.s.IsPlatformAdmin),
                     MemberId = (Guid?)m!.Id,
                     DirectPermissions = m.DirectPermissions,
                     RolePermissions = m.MemberRoles.Select(mr => mr.TenantRole.Permissions).ToList(),
@@ -504,13 +504,13 @@ public class TenantMembershipRepository : ITenantMembershipRepository
                 })
             .FirstOrDefaultAsync(ct);
 
-        return row is null ? null : new SubjectMembershipRead(row.IsPlatformAdmin, row.Facts());
+        return row is null ? null : new SubjectMembershipRead(row.Subject.IsActivePlatformAdmin, row.Facts());
     }
 
-    /// <summary>The subject's flag with the membership columns of the left join; <see cref="MemberId"/> is null when there is none.</summary>
+    /// <summary>The subject's standing with the membership columns of the left join; <see cref="MemberId"/> is null when there is none.</summary>
     private sealed class MembershipRow
     {
-        public bool IsPlatformAdmin { get; init; }
+        public required SubjectSignInState Subject { get; init; }
 
         public Guid? MemberId { get; init; }
 
@@ -670,14 +670,12 @@ public class TenantMembershipRepository : ITenantMembershipRepository
         await using var lease = await OpenPlatformAsync(ct);
         var db = lease.Context;
         var memberships = await db.TenantMembers.AsNoTracking()
-            .Where(m => m.Subject!.IsPlatformAdmin && m.Subject.IsActive && !m.Subject.IsSystemSubject
-                && m.Tenant!.IsActive)
+            .Where(m => db.Subjects.ActivePlatformAdmins().Any(s => s.Id == m.SubjectId) && m.Tenant!.IsActive)
             .OrderBy(m => m.SysCreatedAt).ThenBy(m => m.Id)
             .Select(m => new PlatformAdminMembership(m.SubjectId, m.TenantId, m.Tenant!.Slug, m.Tenant.DisplayName))
             .ToListAsync(ct);
         var admins = memberships.GroupBy(m => m.SubjectId).Select(g => g.First()).ToList();
-        var count = await db.Subjects.AsNoTracking()
-            .CountAsync(s => s.IsPlatformAdmin && s.IsActive && !s.IsSystemSubject, ct);
+        var count = await db.Subjects.AsNoTracking().ActivePlatformAdmins().CountAsync(ct);
         return new PlatformAdminDirectory(admins, count);
     }
 
